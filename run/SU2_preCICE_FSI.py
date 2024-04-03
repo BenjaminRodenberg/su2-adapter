@@ -57,7 +57,7 @@ def main():
 
     # Dimension
     parser.add_option("-d", "--dimension", dest="nDim", help="Dimension of fluid domain (2D/3D)", type="int", default=2)
-  
+
     (options, args) = parser.parse_args()
     options.nZone = int(1)
 
@@ -115,17 +115,17 @@ def main():
     nVertex_MovingMarker_PHYS = 0    #number of physical vertices
     iVertices_MovingMarker_PHYS = [] # indices of vertices this rank is working on
     # Datatypes must be primitive as input to SU2 wrapper code, not numpy.int8, numpy.int64, etc.. So a list is used
-    
+
     if MovingMarkerID != None:
         nVertex_MovingMarker = SU2Driver.GetNumberVertices(MovingMarkerID)
         nVertex_MovingMarker_HALO = SU2Driver.GetNumberHaloVertices(MovingMarkerID)
         nVertex_MovingMarker_PHYS = nVertex_MovingMarker - nVertex_MovingMarker_HALO
-        
+
         # Obtain indices of all vertices that are being worked on on this rank
         for iVertex in range(nVertex_MovingMarker):
             if not SU2Driver.IsAHaloNode(MovingMarkerID, iVertex):
                 iVertices_MovingMarker_PHYS.append(int(iVertex))
-    
+
     # Get coords of vertices
     coords = numpy.zeros((nVertex_MovingMarker_PHYS, options.nDim))
     for i, iVertex in enumerate(iVertices_MovingMarker_PHYS):
@@ -184,7 +184,7 @@ def main():
     precice_saved_time = 0
     precice_saved_iter = 0
     while (participant.is_coupling_ongoing()):#(TimeIter < nTimeIter):
-        
+
         # Implicit coupling
         if (participant.requires_writing_checkpoint()):
             # Save the state
@@ -197,7 +197,7 @@ def main():
 
         # Retreive data from preCICE
         displacements = participant.read_data(mesh_name, precice_read, vertex_ids, deltaT)
-        
+
         # Set the updated displacements
         for i, iVertex in enumerate(iVertices_MovingMarker_PHYS):
             DisplX = displacements[i][0]
@@ -205,15 +205,15 @@ def main():
             DisplZ = 0 if options.nDim == 2 else displacements[i][2]
 
             SU2Driver.SetMeshDisplacement(MovingMarkerID, iVertex, DisplX, DisplY, DisplZ)
-        
+
         if options.with_MPI == True:
             comm.Barrier()
-            
+
         # Update timestep based on preCICE
         deltaT = SU2Driver.GetUnsteady_TimeStep()
         deltaT = min(precice_deltaT, deltaT)
         SU2Driver.SetUnsteady_TimeStep(deltaT)
-        
+
         # Time iteration preprocessing (mesh is deformed here)
         SU2Driver.Preprocess(TimeIter)
 
@@ -229,6 +229,9 @@ def main():
         # Monitor the solver
         stopCalc = SU2Driver.Monitor(TimeIter)
 
+        # Update control parameters
+        TimeIter += 1
+        time += deltaT
 
         # Loop over the vertices
         for i, iVertex in enumerate(iVertices_MovingMarker_PHYS):
@@ -241,22 +244,22 @@ def main():
         # Advance preCICE
         participant.advance(deltaT)
 
+        if (stopCalc == True):
+            break
+
         # Implicit coupling:
         if (participant.requires_reading_checkpoint()):
             # Reload old state
             SU2Driver.ReloadOldState()
             time = precice_saved_time
             TimeIter = precice_saved_iter
-        else: # Output and increment as usual
+
+        if (participant.is_time_window_complete()):
             SU2Driver.Output(TimeIter)
-            if (stopCalc == True):
-                break
-            # Update control parameters
-            TimeIter += 1
-            time += deltaT
-        
+
         if options.with_MPI == True:
             comm.Barrier()
+
     # Postprocess the solver and exit cleanly
     SU2Driver.Postprocessing()
 
