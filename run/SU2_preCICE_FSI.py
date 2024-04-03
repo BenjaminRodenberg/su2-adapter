@@ -244,9 +244,6 @@ def main():
         # Advance preCICE
         participant.advance(deltaT)
 
-        if (stopCalc == True):
-            break
-
         # Implicit coupling:
         if (participant.requires_reading_checkpoint()):
             # Reload old state
@@ -256,6 +253,8 @@ def main():
 
         if (participant.is_time_window_complete()):
             SU2Driver.Output(TimeIter)
+            if (stopCalc == True):
+                break
 
         if options.with_MPI == True:
             comm.Barrier()
